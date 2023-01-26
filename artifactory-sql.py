@@ -8,7 +8,7 @@ def import_data(input_files, output):
     with sqlite3.connect(output, isolation_level="DEFERRED") as db:
         c = db.cursor()
         c.execute(
-            "CREATE TABLE IF NOT EXISTS logs(date_timestamp, hash, request_time_ms, request_type, ip, repo, path, size_bytes)"
+            "CREATE TABLE IF NOT EXISTS logs(date_timestamp INTEGER, hash TEXT, request_time_ms INTEGER, request_type TEXT, ip TEXT, repo TEXT, path TEXT, size_bytes INTEGER) STRICT"
         )
         c.execute("""PRAGMA synchronous = OFF""")
         c.execute("""PRAGMA journal_mode = OFF""")
