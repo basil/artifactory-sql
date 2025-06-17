@@ -11,8 +11,11 @@ def import_data(input_files, output):
         c.execute(
             "CREATE TABLE IF NOT EXISTS logs(date_timestamp INTEGER, trace_id TEXT, remote_address TEXT, username TEXT, request_method TEXT, request_url TEXT, return_status INTEGER, request_content_length_bytes INTEGER, response_content_length_bytes INTEGER, request_duration_ms INTEGER, request_user_agent TEXT) STRICT"
         )
-        c.execute("""PRAGMA synchronous = OFF""")
-        c.execute("""PRAGMA journal_mode = OFF""")
+        c.execute("PRAGMA synchronous = OFF")
+        c.execute("PRAGMA journal_mode = OFF")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_logs_search ON logs (request_url, response_content_length_bytes, remote_address)"
+        )
         for f in input_files:
             parse_file(f, c)
         db.commit()
