@@ -42,6 +42,16 @@ class LogImporter:
         self.cursor.execute("PRAGMA journal_mode = OFF")
         self.db.commit()
 
+    def fetch_azure_ip_ranges(self):
+        with urllib.request.urlopen(
+            "https://raw.githubusercontent.com/femueller/cloud-ip-ranges/b2f09e245369a4d3f96de2b3faf4a47217537a7b/microsoft-azure-ip-ranges.json"
+        ) as response:
+            if response.getcode() != 200:
+                raise urllib.error.URLError(
+                    f"Unexpected HTTP status code {response.getcode()}"
+                )
+            return json.loads(response.read().decode("utf-8"))
+
     def fetch_aws_ip_ranges(self):
         with urllib.request.urlopen(
             "https://ip-ranges.amazonaws.com/ip-ranges.json"
@@ -57,6 +67,10 @@ class LogImporter:
         with urllib.request.urlopen(
             "https://raw.githubusercontent.com/femueller/cloud-ip-ranges/refs/heads/master/digitalocean.csv"
         ) as response:
+            if response.getcode() != 200:
+                raise urllib.error.URLError(
+                    f"Unexpected HTTP status code {response.getcode()}"
+                )
             csv_content = response.read().decode("utf-8")
             csv_file = io.StringIO(csv_content)
             reader = csv.reader(csv_file)
@@ -84,36 +98,44 @@ class LogImporter:
                 )
             return json.loads(response.read().decode("utf-8"))
 
+    def find_azure_region(self, remote_address):
+        addr = ipaddress.ip_address(remote_address)
+        for value in self.azure_ip_ranges["values"]:
+            for prefix in value["properties"]["addressPrefixes"]:
+                if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
+                    prefix
+                ):
+                    return value["properties"]["region"]
+        return None
+
     def find_aws_region(self, remote_address):
+        addr = ipaddress.ip_address(remote_address)
         for prefix in self.aws_ip_ranges["prefixes"]:
-            if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
-                prefix["ip_prefix"]
-            ):
+            if addr in ipaddress.ip_network(prefix["ip_prefix"]):
                 return prefix["region"]
         return None
 
     def find_do_region(self, remote_address):
+        addr = ipaddress.ip_address(remote_address)
         for prefix in self.do_ip_ranges:
-            if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
-                prefix["network"]
-            ):
+            if addr in ipaddress.ip_network(prefix["network"]):
                 return prefix["region"]
         return None
 
     def find_gcp_region(self, remote_address):
+        addr = ipaddress.ip_address(remote_address)
         for prefix in self.gcp_ip_ranges["prefixes"]:
             if "ipv6Prefix" in prefix:
                 effective_prefix = prefix["ipv6Prefix"]
             else:
                 effective_prefix = prefix["ipv4Prefix"]
-            if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
-                effective_prefix
-            ):
+            if addr in ipaddress.ip_network(effective_prefix):
                 return prefix["scope"]
         return None
 
     def import_files(self, input_files):
         self.setup_database()
+        self.azure_ip_ranges = self.fetch_azure_ip_ranges()
         self.aws_ip_ranges = self.fetch_aws_ip_ranges()
         self.do_ip_ranges = self.fetch_do_ip_ranges()
         self.gcp_ip_ranges = self.fetch_gcp_ip_ranges()
@@ -145,30 +167,29 @@ class LogImporter:
                         pass
                 remote_region = None
                 if remote_organization:
-                    if (
-                        "amazon" in remote_organization.lower()
-                        or "aws" in remote_organization.lower()
-                    ):
-                        if remote_address in self.region_cache:
-                            remote_region = self.region_cache[remote_address]
-                        else:
-                            remote_region = self.find_aws_region(remote_address)
-                            self.region_cache[remote_address] = remote_region
+                    if remote_address in self.region_cache:
+                        remote_region = self.region_cache[remote_address]
                     elif (
-                        "google" in remote_organization.lower()
-                        or "gcp" in remote_organization.lower()
+                        "azure" in remote_organization.lower()
+                        or "microsoft" in remote_organization.lower()
                     ):
-                        if remote_address in self.region_cache:
-                            remote_region = self.region_cache[remote_address]
-                        else:
-                            remote_region = self.find_gcp_region(remote_address)
-                            self.region_cache[remote_address] = remote_region
+                        remote_region = self.find_azure_region(remote_address)
+                        self.region_cache[remote_address] = remote_region
+                    elif (
+                        "aws" in remote_organization.lower()
+                        or "amazon" in remote_organization.lower()
+                    ):
+                        remote_region = self.find_aws_region(remote_address)
+                        self.region_cache[remote_address] = remote_region
                     elif "digitalocean" in remote_organization.lower():
-                        if remote_address in self.region_cache:
-                            remote_region = self.region_cache[remote_address]
-                        else:
-                            remote_region = self.find_do_region(remote_address)
-                            self.region_cache[remote_address] = remote_region
+                        remote_region = self.find_do_region(remote_address)
+                        self.region_cache[remote_address] = remote_region
+                    elif (
+                        "gcp" in remote_organization.lower()
+                        or "google" in remote_organization.lower()
+                    ):
+                        remote_region = self.find_gcp_region(remote_address)
+                        self.region_cache[remote_address] = remote_region
                 username = parts[3]
                 request_method = parts[4]
                 assert request_method in [
