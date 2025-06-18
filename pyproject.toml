@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "An SQLite interface to Artifactory log files"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "geoip2>=5.1.0",
+]
