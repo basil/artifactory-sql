@@ -38,9 +38,6 @@ class LogImporter:
         self.cursor.execute(
             "CREATE TABLE IF NOT EXISTS logs(date_timestamp INTEGER, trace_id TEXT, remote_address TEXT, remote_organization TEXT, remote_region TEXT, username TEXT, request_method TEXT, request_url TEXT, return_status INTEGER, request_content_length_bytes INTEGER, response_content_length_bytes INTEGER, request_duration_ms INTEGER, request_user_agent TEXT) STRICT"
         )
-        self.cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_logs_search ON logs (request_url, response_content_length_bytes, remote_address, remote_organization, remote_region)"
-        )
         self.cursor.execute("PRAGMA synchronous = OFF")
         self.cursor.execute("PRAGMA journal_mode = OFF")
         self.db.commit()
@@ -49,6 +46,10 @@ class LogImporter:
         self.setup_database()
         for f in input_files:
             self.parse_file(f)
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_logs_search ON logs (request_url, response_content_length_bytes, remote_address, remote_organization, remote_region)"
+        )
+        self.db.commit()
 
     def parse_file(self, input_file):
         print("Parsing " + input_file)
