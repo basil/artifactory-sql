@@ -50,6 +50,16 @@ class LogImporter:
                 )
             return json.loads(response.read().decode("utf-8"))
 
+    def fetch_gcp_ip_ranges(self):
+        with urllib.request.urlopen(
+            "https://www.gstatic.com/ipranges/cloud.json"
+        ) as response:
+            if response.getcode() != 200:
+                raise urllib.error.URLError(
+                    f"Unexpected HTTP status code {response.getcode()}"
+                )
+            return json.loads(response.read().decode("utf-8"))
+
     def find_aws_region(self, remote_address):
         for prefix in self.aws_ip_ranges["prefixes"]:
             if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
@@ -58,9 +68,22 @@ class LogImporter:
                 return prefix["region"]
         return None
 
+    def find_gcp_region(self, remote_address):
+        for prefix in self.gcp_ip_ranges["prefixes"]:
+            if "ipv6Prefix" in prefix:
+                effective_prefix = prefix["ipv6Prefix"]
+            else:
+                effective_prefix = prefix["ipv4Prefix"]
+            if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
+                effective_prefix
+            ):
+                return prefix["scope"]
+        return None
+
     def import_files(self, input_files):
         self.setup_database()
         self.aws_ip_ranges = self.fetch_aws_ip_ranges()
+        self.gcp_ip_ranges = self.fetch_gcp_ip_ranges()
         for f in input_files:
             self.parse_file(f)
 
@@ -97,6 +120,15 @@ class LogImporter:
                             remote_region = self.region_cache[remote_address]
                         else:
                             remote_region = self.find_aws_region(remote_address)
+                            self.region_cache[remote_address] = remote_region
+                    elif (
+                        "google" in remote_organization.lower()
+                        or "gcp" in remote_organization.lower()
+                    ):
+                        if remote_address in self.region_cache:
+                            remote_region = self.region_cache[remote_address]
+                        else:
+                            remote_region = self.find_gcp_region(remote_address)
                             self.region_cache[remote_address] = remote_region
                 username = parts[3]
                 request_method = parts[4]
