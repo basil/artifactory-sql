@@ -8,7 +8,7 @@ An [SQLite](https://www.sqlite.org) interface to [Artifactory](https://jfrog.com
 ## Usage
 
 ```sh
-$ python3 artifactory-sql.py -h
+$ uv run artifactory-sql.py -h
 usage: artifactory-sql.py [-h] [-o OUTPUT] input [input ...]
 
 positional arguments:
@@ -23,7 +23,7 @@ options:
 ## Examples
 
 ```sql
-$ python3 artifactory-sql.py
+$ uv run artifactory-sql.py
 SQLite version 3.37.2 2022-01-06 13:25:41
 Enter ".help" for usage hints.
 sqlite> .tables
