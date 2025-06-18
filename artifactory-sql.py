@@ -10,6 +10,8 @@ class LogImporter:
         self.output = output
         self.asn_mmdb = asn
         self.city_mmdb = city
+        self.asn_cache = {}
+        self.city_cache = {}
 
     def __enter__(self):
         self.db = sqlite3.connect(self.output)
@@ -69,29 +71,36 @@ class LogImporter:
         remote_address = parts[2]
         remote_organization = None
         if self.asn_reader:
-            try:
-                remote_organization = self.asn_reader.asn(
-                    remote_address
-                ).autonomous_system_organization
-            except geoip2.errors.AddressNotFoundError:
-                pass
-        username = parts[3]
+            if remote_address in self.asn_cache:
+                remote_organization = self.asn_cache[remote_address]
+            else:
+                try:
+                    asn_data = self.asn_reader.asn(remote_address)
+                    remote_organization = asn_data.autonomous_system_organization
+                except geoip2.errors.AddressNotFoundError:
+                    pass
+                self.asn_cache[remote_address] = remote_organization
         remote_region = None
         if self.city_reader:
-            try:
-                city_data = self.city_reader.city(remote_address)
-                remote_region = city_data.country.iso_code
-                if (
-                    city_data.country.iso_code == "US"
-                    and city_data.subdivisions.most_specific.iso_code
-                ):
-                    remote_region += "/"
-                    remote_region += city_data.subdivisions.most_specific.iso_code
-                if city_data.city.name:
-                    remote_region += "/"
-                    remote_region += city_data.city.name
-            except geoip2.errors.AddressNotFoundError:
-                pass
+            if remote_address in self.city_cache:
+                remote_region = self.city_cache[remote_address]
+            else:
+                try:
+                    city_data = self.city_reader.city(remote_address)
+                    remote_region = city_data.country.iso_code
+                    if (
+                        city_data.country.iso_code == "US"
+                        and city_data.subdivisions.most_specific.iso_code
+                    ):
+                        remote_region += (
+                            "/" + city_data.subdivisions.most_specific.iso_code
+                        )
+                    if city_data.city.name:
+                        remote_region += "/" + city_data.city.name
+                except geoip2.errors.AddressNotFoundError:
+                    pass
+                self.city_cache[remote_address] = remote_region
+        username = parts[3]
         request_method = parts[4]
         assert request_method in [
             "DELETE",
