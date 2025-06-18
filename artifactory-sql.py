@@ -1,6 +1,8 @@
 import argparse
+import csv
 import datetime
 import geoip2.database
+import io
 import ipaddress
 import json
 import os
@@ -50,6 +52,28 @@ class LogImporter:
                 )
             return json.loads(response.read().decode("utf-8"))
 
+    def fetch_do_ip_ranges(self):
+        ip_ranges = []
+        with urllib.request.urlopen(
+            "https://raw.githubusercontent.com/femueller/cloud-ip-ranges/refs/heads/master/digitalocean.csv"
+        ) as response:
+            csv_content = response.read().decode("utf-8")
+            csv_file = io.StringIO(csv_content)
+            reader = csv.reader(csv_file)
+            for row in reader:
+                assert len(row) == 5
+                network, country, region, city, postal = row[:5]
+                ip_ranges.append(
+                    {
+                        "network": network,
+                        "country": country,
+                        "region": region,
+                        "city": city,
+                        "postal": postal,
+                    }
+                )
+        return ip_ranges
+
     def fetch_gcp_ip_ranges(self):
         with urllib.request.urlopen(
             "https://www.gstatic.com/ipranges/cloud.json"
@@ -64,6 +88,14 @@ class LogImporter:
         for prefix in self.aws_ip_ranges["prefixes"]:
             if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
                 prefix["ip_prefix"]
+            ):
+                return prefix["region"]
+        return None
+
+    def find_do_region(self, remote_address):
+        for prefix in self.do_ip_ranges:
+            if ipaddress.ip_address(remote_address) in ipaddress.ip_network(
+                prefix["network"]
             ):
                 return prefix["region"]
         return None
@@ -83,6 +115,7 @@ class LogImporter:
     def import_files(self, input_files):
         self.setup_database()
         self.aws_ip_ranges = self.fetch_aws_ip_ranges()
+        self.do_ip_ranges = self.fetch_do_ip_ranges()
         self.gcp_ip_ranges = self.fetch_gcp_ip_ranges()
         for f in input_files:
             self.parse_file(f)
@@ -129,6 +162,12 @@ class LogImporter:
                             remote_region = self.region_cache[remote_address]
                         else:
                             remote_region = self.find_gcp_region(remote_address)
+                            self.region_cache[remote_address] = remote_region
+                    elif "digitalocean" in remote_organization.lower():
+                        if remote_address in self.region_cache:
+                            remote_region = self.region_cache[remote_address]
+                        else:
+                            remote_region = self.find_do_region(remote_address)
                             self.region_cache[remote_address] = remote_region
                 username = parts[3]
                 request_method = parts[4]
