@@ -9,15 +9,20 @@ An [SQLite](https://www.sqlite.org) interface to [Artifactory](https://jfrog.com
 
 ```sh
 $ uv run artifactory-sql.py -h
-usage: artifactory-sql.py [-h] [-o OUTPUT] input [input ...]
+usage: artifactory-sql.py [-h] [-o OUTPUT] [-a ASN] [-c CITY]
+                          input [input ...]
 
 positional arguments:
-  input                 The Artifactory log file(s) to parse.
+  input                The Artifactory log file(s) to parse.
 
 options:
-  -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        The name of the SQLite database to create. (default: artifactory.db)
+  -h, --help           show this help message and exit
+  -o, --output OUTPUT  The name of the SQLite database to create. (default:
+                       artifactory.db)
+  -a, --asn ASN        Path to the GeoLite2 ASN MaxMind database file.
+                       (default: None)
+  -c, --city CITY      Path to the GeoLite2 City MaxMind database file.
+                       (default: None)
 ```
 
 ## Examples
