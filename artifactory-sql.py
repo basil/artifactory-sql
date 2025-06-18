@@ -135,10 +135,11 @@ class LogImporter:
 
     def import_files(self, input_files):
         self.setup_database()
-        self.azure_ip_ranges = self.fetch_azure_ip_ranges()
-        self.aws_ip_ranges = self.fetch_aws_ip_ranges()
-        self.do_ip_ranges = self.fetch_do_ip_ranges()
-        self.gcp_ip_ranges = self.fetch_gcp_ip_ranges()
+        if self.reader:
+            self.azure_ip_ranges = self.fetch_azure_ip_ranges()
+            self.aws_ip_ranges = self.fetch_aws_ip_ranges()
+            self.do_ip_ranges = self.fetch_do_ip_ranges()
+            self.gcp_ip_ranges = self.fetch_gcp_ip_ranges()
         for f in input_files:
             self.parse_file(f)
 
