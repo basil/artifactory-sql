@@ -32,17 +32,17 @@ $ uv run artifactory-sql.py
 SQLite version 3.37.2 2022-01-06 13:25:41
 Enter ".help" for usage hints.
 sqlite> .tables
-logs
+request_log
 sqlite> .mode column
 sqlite> .header on
-sqlite> .schema logs
-CREATE TABLE logs(date_timestamp, hash, request_time_ms, request_type, ip, repo, path, size_bytes);
-sqlite> SELECT DATETIME(date_timestamp, 'unixepoch'), repo, path, size_bytes FROM logs ORDER BY size_bytes DESC LIMIT 2;
+sqlite> .schema request_log
+CREATE TABLE request_log(date_timestamp, hash, request_time_ms, request_type, ip, repo, path, size_bytes);
+sqlite> SELECT DATETIME(date_timestamp, 'unixepoch'), repo, path, size_bytes FROM request_log ORDER BY size_bytes DESC LIMIT 2;
 DATETIME(date_timestamp, 'unixepoch')  repo               path                                                                                                              size_bytes
 -------------------------------------  -----------------  ----------------------------------------------------------------------------------------------------------------  ----------
 2022-12-31 10:13:08                    jcenter-cache      io/prestosql/presto-server/319/presto-server-319.tar.gz                                                           918994355
 2023-01-01 04:05:03                    incrementals       org/jenkins-ci/plugins/aws-java-sdk/1.11.1026-rc242.25123f405d91/aws-java-sdk-1.11.1026-rc242.25123f405d91.hpi    200625409
-sqlite> SELECT repo, path, size_bytes, count(path) AS cnt FROM logs GROUP BY path ORDER BY cnt DESC LIMIT 5;
+sqlite> SELECT repo, path, size_bytes, count(path) AS cnt FROM request_log GROUP BY path ORDER BY cnt DESC LIMIT 5;
 repo               path                                                            size_bytes  cnt
 -----------------  --------------------------------------------------------------  ----------  ----
 releases           org/jenkins-ci/main/jenkins-war/maven-metadata.xml              25680       4214

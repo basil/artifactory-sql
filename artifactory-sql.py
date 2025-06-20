@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import geoip2.database
+import json
 import os
 import sqlite3
 
@@ -36,7 +37,11 @@ class LogImporter:
     def setup_database(self):
         # https://jfrog.com/help/r/artifactory-how-to-debug-artifactory-issues-based-on-http-status-codes/request-log
         self.cursor.execute(
-            "CREATE TABLE IF NOT EXISTS logs(date_timestamp INTEGER, trace_id TEXT, remote_address TEXT, remote_organization TEXT, remote_region TEXT, username TEXT, request_method TEXT, request_url TEXT, return_status INTEGER, request_content_length_bytes INTEGER, response_content_length_bytes INTEGER, request_duration_ms INTEGER, request_user_agent TEXT) STRICT"
+            "CREATE TABLE IF NOT EXISTS request_log(date_timestamp INTEGER, trace_id TEXT, remote_address TEXT, remote_organization TEXT, remote_region TEXT, username TEXT, request_method TEXT, request_url TEXT, return_status INTEGER, request_content_length_bytes INTEGER, response_content_length_bytes INTEGER, request_duration_ms INTEGER, request_user_agent TEXT) STRICT"
+        )
+        # https://jfrog.com/help/r/myjfrog-portal/view-data-transfer-logs
+        self.cursor.execute(
+            "CREATE TABLE IF NOT EXISTS data_transfer_log(billing_timestamp TEXT, event_timestamp TEXT, server_name TEXT, service TEXT, action TEXT, remote_address TEXT, remote_organization TEXT, remote_region TEXT, repository TEXT, project TEXT, artifact_path TEXT, user_name TEXT, package_type TEXT, repo_type TEXT, quantity_bytes INTEGER) STRICT"
         )
         self.cursor.execute("PRAGMA synchronous = OFF")
         self.cursor.execute("PRAGMA journal_mode = OFF")
@@ -47,7 +52,7 @@ class LogImporter:
         for f in input_files:
             self.parse_file(f)
         self.cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_logs_search ON logs (request_url, response_content_length_bytes, remote_address, remote_organization, remote_region)"
+            "CREATE INDEX IF NOT EXISTS idx_logs_search ON request_log (request_url, response_content_length_bytes, remote_address, remote_organization, remote_region)"
         )
         self.db.commit()
 
@@ -55,11 +60,47 @@ class LogImporter:
         print("Parsing " + input_file)
         with open(input_file, "r") as f:
             for line in f:
-                self.parse_line(line)
+                line = line.strip()
+                if "|" in line:
+                    self.parse_request_log_line(line)
+                else:
+                    self.parse_data_transfer_log_line(line)
         self.db.commit()
 
-    def parse_line(self, line):
-        line = line.strip()
+    def get_remote_organization(self, remote_address):
+        if remote_address in self.asn_cache:
+            return self.asn_cache[remote_address]
+        if not self.asn_reader:
+            return None
+        try:
+            asn_data = self.asn_reader.asn(remote_address)
+            remote_organization = asn_data.autonomous_system_organization
+        except geoip2.errors.AddressNotFoundError:
+            remote_organization = None
+        self.asn_cache[remote_address] = remote_organization
+        return remote_organization
+
+    def get_remote_region(self, remote_address):
+        if remote_address in self.city_cache:
+            return self.city_cache[remote_address]
+        if not self.city_reader:
+            return None
+        try:
+            city_data = self.city_reader.city(remote_address)
+            remote_region = city_data.country.iso_code
+            if (
+                city_data.country.iso_code == "US"
+                and city_data.subdivisions.most_specific.iso_code
+            ):
+                remote_region += "/" + city_data.subdivisions.most_specific.iso_code
+            if city_data.city.name:
+                remote_region += "/" + city_data.city.name
+        except geoip2.errors.AddressNotFoundError:
+            remote_region = None
+        self.city_cache[remote_address] = remote_region
+        return remote_region
+
+    def parse_request_log_line(self, line):
         parts = line.split("|")
         assert len(parts) == 11, line
         date_timestamp_raw = parts[0]
@@ -70,37 +111,8 @@ class LogImporter:
         )
         trace_id = parts[1]
         remote_address = parts[2]
-        remote_organization = None
-        if self.asn_reader:
-            if remote_address in self.asn_cache:
-                remote_organization = self.asn_cache[remote_address]
-            else:
-                try:
-                    asn_data = self.asn_reader.asn(remote_address)
-                    remote_organization = asn_data.autonomous_system_organization
-                except geoip2.errors.AddressNotFoundError:
-                    pass
-                self.asn_cache[remote_address] = remote_organization
-        remote_region = None
-        if self.city_reader:
-            if remote_address in self.city_cache:
-                remote_region = self.city_cache[remote_address]
-            else:
-                try:
-                    city_data = self.city_reader.city(remote_address)
-                    remote_region = city_data.country.iso_code
-                    if (
-                        city_data.country.iso_code == "US"
-                        and city_data.subdivisions.most_specific.iso_code
-                    ):
-                        remote_region += (
-                            "/" + city_data.subdivisions.most_specific.iso_code
-                        )
-                    if city_data.city.name:
-                        remote_region += "/" + city_data.city.name
-                except geoip2.errors.AddressNotFoundError:
-                    pass
-                self.city_cache[remote_address] = remote_region
+        remote_organization = self.get_remote_organization(remote_address)
+        remote_region = self.get_remote_region(remote_address)
         username = parts[3]
         request_method = parts[4]
         assert request_method in [
@@ -120,7 +132,7 @@ class LogImporter:
         request_duration_ms = int(parts[9])
         request_user_agent = parts[10]
         self.cursor.execute(
-            "INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO request_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 date_timestamp,
                 trace_id,
@@ -135,6 +147,57 @@ class LogImporter:
                 response_content_length_bytes,
                 request_duration_ms,
                 request_user_agent,
+            ),
+        )
+
+    def parse_data_transfer_log_line(self, line):
+        data = json.loads(line)
+        billing_timestamp = int(
+            datetime.datetime.strptime(
+                data["billing_timestamp"], "%Y-%m-%d %H:%M:%S.%f"
+            ).timestamp()
+        )
+        event_timestamp = int(
+            datetime.datetime.strptime(
+                data["event_timestamp"], "%Y-%m-%d %H:%M:%S.%f"
+            ).timestamp()
+        )
+        assert data["server_name"] == "jenkinsci", data["server_name"]
+        assert data["service"] == "artifactory", data["service"]
+        assert data["action"] in ["upload", "download"], data["action"]
+        assert data["project"] == "default", data["project"]
+        assert data["consumption_unit"] == "bytes", data["consumption_unit"]
+        assert data["package_type"] in [
+            "maven",
+            "npm",
+            "generic",
+        ], data["package_type"]
+        assert data["repo_type"] in [
+            "local",
+            "virtual",
+            "remote",
+        ], data["repo_type"]
+        remote_address = data["ip"]
+        remote_organization = self.get_remote_organization(remote_address)
+        remote_region = self.get_remote_region(remote_address)
+        self.cursor.execute(
+            "INSERT INTO data_transfer_log VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                billing_timestamp,
+                event_timestamp,
+                data["server_name"],
+                data["service"],
+                data["action"],
+                remote_address,
+                remote_organization,
+                remote_region,
+                data["repository"],
+                data["project"],
+                data["artifact_path"],
+                data["user_name"],
+                data["package_type"],
+                data["repo_type"],
+                data["quantity"],
             ),
         )
 
