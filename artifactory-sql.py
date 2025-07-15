@@ -119,6 +119,7 @@ class LogImporter:
             "DELETE",
             "GET",
             "HEAD",
+            "MKCOL",
             "OPTIONS",
             "PATCH",
             "POST",
