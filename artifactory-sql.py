@@ -77,6 +77,8 @@ class LogImporter:
             remote_organization = asn_data.autonomous_system_organization
         except geoip2.errors.AddressNotFoundError:
             remote_organization = None
+        except ValueError:
+            remote_organization = None
         self.asn_cache[remote_address] = remote_organization
         return remote_organization
 
@@ -97,10 +99,15 @@ class LogImporter:
                 remote_region += "/" + city_data.city.name
         except geoip2.errors.AddressNotFoundError:
             remote_region = None
+        except ValueError:
+            remote_region = None
         self.city_cache[remote_address] = remote_region
         return remote_region
 
     def parse_request_log_line(self, line):
+        if "|LDAP_USER_SEARCH|" in line:
+            # garbage input
+            return
         parts = line.split("|")
         assert len(parts) == 11, line
         date_timestamp_raw = parts[0]
@@ -116,6 +123,7 @@ class LogImporter:
         username = parts[3]
         request_method = parts[4]
         assert request_method in [
+            "--BIS",
             "DELETE",
             "GET",
             "HEAD",
@@ -125,6 +133,8 @@ class LogImporter:
             "POST",
             "PROPFIND",
             "PUT",
+            "--SST",
+            "--UNA",
         ], line
         request_url = parts[5]
         return_status = int(parts[6])
