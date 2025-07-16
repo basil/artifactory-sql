@@ -176,9 +176,10 @@ class LogImporter:
         assert data["project"] == "default", data["project"]
         assert data["consumption_unit"] == "bytes", data["consumption_unit"]
         assert data["package_type"] in [
+            "buildinfo",
+            "generic",
             "maven",
             "npm",
-            "generic",
         ], data["package_type"]
         assert data["repo_type"] in [
             "local",
