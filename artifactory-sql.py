@@ -105,9 +105,6 @@ class LogImporter:
         return remote_region
 
     def parse_request_log_line(self, line):
-        if "|LDAP_USER_SEARCH|" in line:
-            # garbage input
-            return
         parts = line.split("|")
         assert len(parts) == 11, line
         date_timestamp_raw = parts[0]
